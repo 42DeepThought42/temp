@@ -24,8 +24,10 @@ function opt = boGetOptions(extra)
 %                              good; used as extra training data (original scale)
 %   fixedValues      []        k-by-1 objective values matching fixedPoints
 %   verbose          true      print an iteration table
-%   stopTolerance    0.1       early stop if best improves by < tol for
-%                              'plateauLength' iterations (fraction, >0)
+%   stopTolerance    0         early stop if best improves by < tol for
+%                              'plateauLength' iterations.  A relative
+%                              fraction (0 < tol < 1).  0 disables early
+%                              stopping entirely.
 %   plateauLength    10        patience in iterations for early stopping
 %   gp               struct()  GP hyper-parameter overrides/limits, fields:
 %                              lengthscales, lengthscaleBounds, signalVar,
@@ -46,7 +48,7 @@ function opt = boGetOptions(extra)
         'fixedPoints',     [], ...
         'fixedValues',     [], ...
         'verbose',         true, ...
-        'stopTolerance',   0.1, ...
+        'stopTolerance',   0, ...
         'plateauLength',   10, ...
         'gp',              struct('kernel','matern32', 'lengthscales',[], ...
                                   'lengthscaleBounds',[], 'signalVar',[], ...
@@ -118,6 +120,9 @@ function opt = boGetOptions(extra)
     opt.kappa         = boScalar('kappa', opt.kappa);
     opt.xi            = boScalar('xi',    opt.xi);
     opt.stopTolerance = boScalar('stopTolerance', opt.stopTolerance);
+    if opt.stopTolerance < 0
+        error('boGetOptions:badValue', 'stopTolerance must be >= 0.');
+    end
     opt.seed          = boScalar('seed',  opt.seed);
     opt.normalizeY    = logical(opt.normalizeY);
     opt.verbose       = logical(opt.verbose);

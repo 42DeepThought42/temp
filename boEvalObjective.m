@@ -13,8 +13,14 @@ function [y, nBad] = boEvalObjective(fun, X, opt)
         f = fun(X);
     end
     f = f(:);
-    if numel(f) ~= m
-        % not vectorised (or wrong shape): evaluate row-by-row
+    % The vectorised call is only trusted if it returned EXACTLY one value per
+    % point.  A size mismatch is the classic "not vectorised" case, but an
+    % element-wise objective can also return the right shape while still
+    % containing NaN/Inf in some rows (e.g. exp(...) overflow); in that case
+    % the per-row evaluation below is the only safe way to isolate the bad
+    % points, so fall back whenever the vectorised result is not exactly
+    % m finite scalars.
+    if numel(f) ~= m || ~all(isfinite(f))
         f = zeros(m,1);
         for i = 1:m
             if iscell(fun)

@@ -30,8 +30,13 @@ function xNext = boMaximiseAcquisition(X, y, theta, opt, theta0)
     acqNeg = @(z) -boAcqValue(z, X, y, alpha, L, ls, sigma2, gp.kernel, opt);
 
     % ---- Build start points -------------------------------------------------
+    % Re-seed from the user-supplied seed (modern MATLAB convention) so that
+    % the multistart locations are reproducible.  A seed of 0 means "do not
+    % reset", in which case we continue the existing RNG stream.
     nRandom = max(50, 20 * d);
-    rand('seed', 67890);
+    if opt.seed > 0
+        rng(opt.seed);
+    end
     starts = rand(nRandom, d);
     bestRow = X(boBestIndex(y, opt.mode), :);
     starts  = [starts; bestRow];

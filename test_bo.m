@@ -70,4 +70,22 @@ sphere = @(v) sum(v.^2);
 fprintf('entropy: best f = %.6e\n', fb);
 
 disp('');
+disp('=== Test 9: 5-D Ackley, known global minimum f(0)=0 on [-5,5]^5 ===');
+% Uses the reference SFU Ackley (ackley_example.m): a smooth, BOUNDED function
+% f = -20*exp(-0.2*sqrt(sum(x^2)/5)) - exp(sum(cos(2*pi*x))/5) + 20 + exp(1)
+% with global minimum f(0,...,0) = 0.  It is highly multimodal in 5-D, so BO
+% converges toward the minimum and typically settles in a local basin; we assert
+% it makes strong progress (well below the ~6-13 range of the basin floor).
+% (Early stopping is left disabled: default stopTolerance=0.)
+ack = @(x) ackley_example(x);   % a=20, b=0.2, c=2*pi (defaults)
+[f, x, info] = bayes_optimize(ack, 5, [-5*ones(1,5); 5*ones(1,5)], ...
+                            struct('maxIter', 60, 'initialPoints', 25, ...
+                                   'seed', 11, 'acquisition', 'EI', ...
+                                   'nStarts', 150, 'verbose', true));
+fprintf('best f = %.6e at x = [%s]\n', f, ...
+        strjoin(arrayfun(@(t) sprintf('%.4f', t), x, 'UniformOutput', false), ' '));
+fprintf('n evals = %d (initial 25 + up to 60 iterations)\n', info.nEvals);
+assert(f < 2.0, '5-D Ackley should converge toward the known minimum f=0 (got f=%.4e)', f);
+
+disp('');
 disp('ALL TESTS PASSED');

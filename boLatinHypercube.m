@@ -5,12 +5,14 @@ function X = boLatinHypercube(n, d, seed)
 %
 %   Returns an n-by-d matrix of points in [0,1]^d.  One stratified random
 %   point per row in each dimension.  Base MATLAB only.
+%
+%   Seeding follows the modern MATLAB convention: `rng(seed)` resets the
+%   default (twister) stream, so the design is reproducible for a given
+%   seed.  A seed of 0 (or a missing/empty seed) leaves the RNG state
+%   untouched, i.e. no reseeding happens.
 
-    if nargin >= 3 && ~isempty(seed)
-        % Re-seed only if a positive integer seed is supplied.
-        if seed > 0
-            rand('seed', seed);
-        end
+    if nargin >= 3 && ~isempty(seed) && seed > 0
+        rng(seed);
     end
     X = zeros(n, d);
     for j = 1:d

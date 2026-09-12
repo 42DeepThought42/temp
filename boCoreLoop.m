@@ -51,6 +51,7 @@ function [fBest, xBest01, info] = boCoreLoop(fun, nvars, bounds, opt)
         fprintf('  it    best-value        improvement\n');
     end
 
+    earlyStopEnabled = (opt.stopTolerance > 0);
     plateau = 0;
     for it = 1:opt.maxIter
         % 1) Fit the GP surrogate.
@@ -61,19 +62,27 @@ function [fBest, xBest01, info] = boCoreLoop(fun, nvars, bounds, opt)
 
         % 3) Evaluate the true objective at xNext (original scale).
         [yNew, ~] = boEvalObjective(fun, boDenormalise(xNext(1,:), bounds), opt);
-        yNewModel = yNew;
-        if opt.normalizeY
-            yNewModel = (yNew - min(Y)) / max(1, max(Y) - min(Y));
-        end
 
-        % 4) Update data and bookkeeping.
-        X = [X; xNext]; Y = [Y; yNew]; yModel = [yModel; yNewModel];
+        % 4) Update the data set, then (re)build the normalised training values
+        %    against the FULL, updated data so the GP always sees a consistent
+        %    0-1 scale (re-normalising rather than appending keeps min/max
+        %    aligned with the data actually being fitted).
+        X = [X; xNext]; Y = [Y; yNew];
+        if opt.normalizeY
+            yModel = (Y - min(Y)) / max(1, max(Y) - min(Y));
+        else
+            yModel = Y;
+        end
         bestIdx = boBestIndex(Y, opt.mode);
         curBest = Y(bestIdx);
 
         if boIsBetter(curBest, fBest, opt.mode)
             fBest = curBest; xBest01 = X(bestIdx,:);
-            relImprove = abs(curBest - bestSoFar) / max(1, abs(bestSoFar));
+            % Reset the patience counter whenever a *meaningful* new best is
+            % found.  "Meaningful" is a relative improvement larger than
+            % stopTolerance; the floor in the denominator avoids blow-up when
+            % the best value is near zero (e.g. a benchmark minimum of 0).
+            relImprove = abs(curBest - bestSoFar) / max(abs(bestSoFar), 1e-12);
             if relImprove < opt.stopTolerance
                 plateau = plateau + 1;
             else
@@ -90,7 +99,7 @@ function [fBest, xBest01, info] = boCoreLoop(fun, nvars, bounds, opt)
             fprintf('  %3d  %+.6e   %+.6e\n', it, fBest, fBest - history(end-1));
         end
 
-        if plateau >= opt.plateauLength
+        if earlyStopEnabled && plateau >= opt.plateauLength
             if opt.verbose
                 fprintf('  early stop: no meaningful improvement for %d iters\n', ...
                         opt.plateauLength);
