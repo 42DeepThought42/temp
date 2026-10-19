@@ -1,0 +1,5 @@
+build/
+*.csv
+*.o
+compile_commands.json
+build-dbg/

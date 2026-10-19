@@ -1,0 +1,170 @@
+# td_sim3 — reference vehicle configuration
+#
+# This is the template's example vehicle: a 3-DOF rigid body carrying one
+# liquid-engine stage (two propellant tanks, throttle + gimbal actuators, a
+# pressure sensor), controlled by a flight computer that holds full throttle
+# and a zero gimbal setpoint, with a mid-flight stage jettison at t = 60 s.
+#
+# It is the exact same vehicle as VehicleFactory::build_example_vehicle(), so
+# the TOML path and the programmatic path are interchangeable (the programmatic
+# one is the test oracle).
+#
+# Sections:
+#   [sim_params]        integrator + telemetry settings
+#   [models.<id>]       one model instance (type + params)
+#   [[connections]]     signal wiring (one line per signal)
+#   [events.<id>]       discrete events (jettison, etc.)
+#   [flight_computer]   the vehicle's flight computer + its software
+#
+# Validation is strict: unknown sections, model types, parameters, ports, or
+# duplicate ids fail at load time with file/line context.
+
+[sim_params]
+t_end            = 120.0     # final simulation time (s)
+dt_macro         = 0.01      # flight-computer / event macro window (s)
+dt_min           = 1e-6      # adaptive substep floor (s)
+dt_max           = 1e-3      # adaptive substep ceiling (s)
+eps_abs          = 1e-9      # RK45 absolute tolerance
+eps_rel          = 1e-9      # RK45 relative tolerance
+telemetry_rate   = 10.0      # Hz
+telemetry_file   = "telemetry.csv"
+
+# --- Models -----------------------------------------------------------------
+# stage: "vehicle" = the airframe (never jettisoned); "stage1" = the first
+#        stage (jettisoned at the event below).
+
+[models.vehicle]
+type    = "RigidBodyVehicle"
+stage   = "vehicle"
+gravity = 9.81                # m/s^2, acts in -z (up = +z)
+
+[models.fuel_tank]
+type         = "PropellantTank"
+stage        = "stage1"
+initial_mass = 22000.0        # kg
+volume       = 22.0           # m^3
+density      = 1000.0         # kg/m^3
+
+[models.oxi_tank]
+type         = "PropellantTank"
+stage        = "stage1"
+initial_mass = 22000.0        # kg
+volume       = 20.0           # m^3
+density      = 1100.0         # kg/m^3
+
+[models.engine1]
+type       = "LiquidEngine"
+stage      = "stage1"
+max_thrust = 1.0e6            # N at full throttle + full pressure
+isp        = 280.0            # s
+
+[models.gimbal_act]
+type = "FirstOrderActuator"
+stage  = "stage1"
+tau    = 0.05                 # s, actuator time constant
+
+[models.throttle_act]
+type  = "FirstOrderActuator"
+stage = "stage1"
+tau   = 0.1                   # s
+cmd0  = 1.0                   # initial committed throttle command (full)
+
+[models.p_sensor]
+type  = "PressureSensor"
+stage = "stage1"
+# offset = 0.0                # sensor bias (optional)
+
+# --- Connections ------------------------------------------------------------
+# Each entry wires one signal:
+#   signal    = "<producer_model_id>.<port_name>"
+#   kind      = "Signal" | "Accumulator" | "Latched"
+#   producers = [ ... ]        (1 for Signal/Latched, N for Accumulator)
+#   consumers = [ ... ]
+# The producer's port NAME must equal the port NAME on every consumer.
+
+[[connections]]
+signal    = "engine1.force_x"
+kind      = "Accumulator"
+producers = ["engine1"]
+consumers = ["vehicle"]
+
+[[connections]]
+signal    = "engine1.force_z"
+kind      = "Accumulator"
+producers = ["engine1"]
+consumers = ["vehicle"]
+
+[[connections]]
+signal    = "engine1.fuel_draw"
+kind      = "Accumulator"
+producers = ["engine1"]
+consumers = ["fuel_tank"]
+
+[[connections]]
+signal    = "engine1.oxi_draw"
+kind      = "Accumulator"
+producers = ["engine1"]
+consumers = ["oxi_tank"]
+
+[[connections]]
+signal    = "fuel_tank.total_mass_contrib"
+kind      = "Accumulator"
+producers = ["fuel_tank"]
+consumers = ["vehicle"]
+
+[[connections]]
+signal    = "oxi_tank.total_mass_contrib"
+kind      = "Accumulator"
+producers = ["oxi_tank"]
+consumers = ["vehicle"]
+
+# Tank latched pressure -> engine (Latched: breaks the engine<->tank loop).
+[[connections]]
+signal    = "fuel_tank.ullage_pressure_latched"
+kind      = "Latched"
+producers = ["fuel_tank"]
+consumers = ["engine1"]
+to        = "fuel_pressure"
+
+[[connections]]
+signal    = "oxi_tank.ullage_pressure_latched"
+kind      = "Latched"
+producers = ["oxi_tank"]
+consumers = ["engine1"]
+to        = "oxi_pressure"
+
+# Actuator position -> engine throttle.
+[[connections]]
+signal    = "throttle_act.position"
+kind      = "Signal"
+producers = ["throttle_act"]
+consumers = ["engine1"]
+
+# Tank live pressure -> sensor.
+[[connections]]
+signal    = "fuel_tank.ullage_pressure"
+kind      = "Signal"
+producers = ["fuel_tank"]
+consumers = ["p_sensor"]
+
+# --- Events -----------------------------------------------------------------
+[events.jettison_stage1]
+type  = "fixed_time"
+stage = "stage1"
+t     = 60.0                  # seconds
+
+# --- Flight computer --------------------------------------------------------
+[flight_computer]
+model    = "flightcomp"
+software = "VehicleFlightSoftware"
+# Signals the software reads each macro window (by "<model>.<port>").
+sensors  = ["gimbal_act.position"]
+# Signals the software writes (discrete commands; 1-step latched).
+commands = ["throttle_act.cmd", "gimbal_act.cmd"]
+
+[flight_computer.params]
+throttle_setpoint = 1.0       # hold full throttle
+gimbal_kp         = 10.0      # gimbal PID gains
+gimbal_ki         = 0.0
+gimbal_kd         = 0.0
+gimbal_setpoint   = 0.0       # hold gimbal centered
